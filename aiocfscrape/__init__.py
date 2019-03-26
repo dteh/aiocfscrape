@@ -84,7 +84,14 @@ class CloudflareScraper(aiohttp.ClientSession):
 
         # Safely evaluate the Javascript expression
         js = js.replace('return', '')
-        params["jschl_answer"] = str(float(js2py.eval_js(js)) + len(domain))
+        try:
+            # print(js)
+            params["jschl_answer"] = str(float(js2py.eval_js(js)) + len(domain))
+        except js2py.internals.simplex.JsException as e:
+            print("JS2PY could not evaluate the JS - perhaps CF has changed something?", e)
+            with open('~/{0}-JS2PY.html'.format("CFERROR"),'w') as f:
+                f.write(js)
+
         method = 'GET'
         cloudflare_kwargs["allow_redirects"] = False
         redirect = await self._request(method, submit_url, **cloudflare_kwargs)
@@ -99,14 +106,15 @@ class CloudflareScraper(aiohttp.ClientSession):
 
     def extract_js(self, body):
         js = re.search(r"setTimeout\(function\(\){\s+(var "
-                       "s,t,o,p,b,r,e,a,k,i,n,g,f.+?\r?\n[\s\S]+?a\.value =.+?)\r?\n", body).group(1)
-
-        js = re.sub(r"a\.value = (.+ \+ t\.length).+", r"\1", js)
-
+                       "s,t,o,p,b,r,e,a,k,i,n,g,f.+?\r?\n[\s\S]+?a\.value =.+?)\r?\n", body, flags=re.DOTALL).group(1)
+        # print(js)
+        js = re.sub(r"a\.value = \((.+ \+ t\.length).+", r"\1", js)
+        # print(js)
         js = re.sub(r"\s{3,}[a-z](?: = |\.).+", "", js).replace("+ t.length", "")
 
         # Strip characters that could be used to exit the string context
         # These characters are not currently used in Cloudflare's arithmetic snippet
         js = re.sub(r"[\n\\']", "", js)
-
+        # print(js)
+        print(js2py.eval_js(js))
         return js
